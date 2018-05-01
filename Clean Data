@@ -1,0 +1,229 @@
+## ------------------------------------------------------------------------
+library(sqldf)
+library(tidyr)
+library(dplyr)
+
+## ------------------------------------------------------------------------
+PR <- read.csv("./Airline_Performance_Report_49673.csv", header = TRUE, nrow = 51508)
+aircode <- read.csv("./Airport_Lookup.csv")
+colnames(PR)
+colnames(aircode)
+
+## ------------------------------------------------------------------------
+PR_Dropped <- PR[, c("Mkt.Al", "Orig", "Dest", "Date", "Miles", "Deps.Day", "Seats.Day", "Seats.Dep", "Pax.Day", "Local.Pax.Day", "Seg.Fare")]
+aircode_Dropped <- aircode[, c("Code", "State", "IATA.Metro")]
+aircode_org <- plyr::rename(aircode_Dropped, c(
+  "Code" = "Orig",
+  "IATA.Metro" = "Org_IATA",
+  "State" = "Org.State"
+))
+aircode_dst <- plyr::rename(aircode_Dropped, c(
+  "Code" = "Dest",
+  "IATA.Metro" = "Dst_IATA",
+  "State" = "Dst.State"
+))
+
+## ------------------------------------------------------------------------
+merge1 <- merge(PR_Dropped, aircode_org, by = "Orig")
+merge2 <- merge(merge1, aircode_dst, by = "Dest")
+colnames(merge2)
+
+## ------------------------------------------------------------------------
+duplicate_rm <- merge2[!duplicated(PR3[, 3:11]), ]
+
+## ------------------------------------------------------------------------
+duplicate_rm$route <- paste(duplicate_rm$Org_IATA, duplicate_rm$Org.State, " - ", duplicate_rm$Dst_IATA, duplicate_rm$Dst.State)
+colnames(duplicate_rm)
+df_clean <- duplicate_rm[, -c(1:2, 12:15)]
+
+## ------------------------------------------------------------------------
+df_clean <- plyr::rename(df_clean, c(
+  "Mkt.Al" = "Airline",
+  "Deps.Day" = "Deps_Day",
+  "Seats.Day" = "Seats_Day",
+  "Seats.Dep" = "Seats_Dep",
+  "Pax.Day" = "Pax_Day",
+  "Local.Pax.Day" = "Local_Pax_Day",
+  "Seg.Fare" = "Seg_Fare"
+))
+
+## ------------------------------------------------------------------------
+head(df_clean)
+
+## ------------------------------------------------------------------------
+df1 <- df_clean
+df1 <- sqldf("SELECT route, 
+                            Date,
+                            Airline,
+                            sum(Seg_Fare*Pax_Day)/sum(Pax_Day) as Fare,
+                            avg(Miles) as Miles,
+                            sum(Deps_Day) as Deps_Day,
+                            sum(Seats_Day) as Seats_Day,
+                            sum(Seats_Dep) as Seats_Dep,
+                            sum(Pax_Day) as Pax_Day,
+                            sum(Local_Pax_Day) as Local_Pax_Day
+                    FROM df1
+                    group by route, 
+                            Date,
+                            Airline
+                            ")
+
+## ------------------------------------------------------------------------
+df2 <- df1
+df2$Rev <- round(df2$Fare * df2$Pax_Day, 4)
+df2$RPM <- round(df2$Pax_Day * df2$Miles, 4)
+df2$ASM <- round(df2$Miles * df2$Seats_Day, 4)
+df2$Yield <- round(df2$Fare / df2$Miles * 100, 4)
+df2$LDF <- round(df2$Pax_Day / df2$Seats_Day, 4)
+df2$RASM <- round(df2$Rev / df2$ASM * 100, 4)
+df2$capacity <- round(df2$Seats_Day / df2$Deps_Day, 4)
+
+## ------------------------------------------------------------------------
+df3 <- df2[, c("route", "Date", "Airline")]
+
+## ------------------------------------------------------------------------
+df4 <- df3 %>% group_by(Date, route) %>% table() %>% as.data.frame() %>% spread(Airline, Freq)
+head(df4)
+
+## ------------------------------------------------------------------------
+df5 <- merge(df2, df4, by = c("route", "Date"))
+
+## ------------------------------------------------------------------------
+market_type <- ifelse(((df5$F9 + df5$NK > 0)) & ((df5$DL + df5$UA == 0)) &
+  ((df5$AS + df5$WN == 0)), "ULC",
+ifelse(((df5$DL + df5$UA > 0)) & ((df5$F9 + df5$NK == 0)) &
+  ((df5$AS + df5$WN == 0)), "LEG",
+ifelse(((df5$F9 + df5$NK > 0)) & ((df5$DL + df5$UA > 0)) &
+  ((df5$AS + df5$WN == 0)), "LEG_ULC",
+ifelse(((df5$AS + df5$WN > 0)) & ((df5$F9 + df5$NK == 0)) &
+  ((df5$DL + df5$UA == 0)), "LC",
+ifelse(((df5$F9 + df5$NK == 0)) & (df5$DL + df5$UA > 0) &
+  ((df5$AS + df5$WN > 0)), "LEG_LC",
+ifelse(((df5$F9 + df5$NK > 0)) & ((df5$DL + df5$UA == 0)) &
+  ((df5$AS + df5$WN > 0)), "LC_ULC",
+ifelse(((df5$F9 + df5$NK > 0)) & ((df5$DL + df5$UA > 0)) &
+  ((df5$AS + df5$WN > 0)), "ALL", "AA")
+)
+)
+)
+)
+)
+)
+
+df5 <- data.frame(df5, market_type)
+
+## ------------------------------------------------------------------------
+AA <- df10[df10$Airline == "AA", ]
+UA <- df10[df10$Airline == "UA", ]
+DL <- df10[df10$Airline == "DL", ]
+F9 <- df10[df10$Airline == "F9", ]
+WN <- df10[df10$Airline == "WN", ]
+AK <- df10[df10$Airline == "AS", ]
+NK <- df10[df10$Airline == "NK", ]
+
+## ------------------------------------------------------------------------
+UA <- UA[-c(3, 18:25)]
+DL <- DL[-c(3, 18:25)]
+F9 <- F9[-c(3, 18:25)]
+WN <- WN[-c(3, 18:25)]
+AK <- AK[-c(3, 18:25)]
+NK <- NK[-c(3, 18:25)]
+
+## ------------------------------------------------------------------------
+colnames(AA) <- paste("AA", colnames(AA), sep = "_")
+colnames(UA) <- paste("UA", colnames(UA), sep = "_")
+colnames(DL) <- paste("DL", colnames(DL), sep = "_")
+colnames(F9) <- paste("F9", colnames(F9), sep = "_")
+colnames(WN) <- paste("WN", colnames(WN), sep = "_")
+colnames(AK) <- paste("AS", colnames(AK), sep = "_")
+colnames(NK) <- paste("NK", colnames(NK), sep = "_")
+
+## ------------------------------------------------------------------------
+library(sqldf)
+df11 <- sqldf("SELECT *
+              FROM AA
+              LEFT JOIN UA
+              ON (AA.AA_route = UA.UA_route and AA.AA_Date=UA.UA_Date)")
+
+## ------------------------------------------------------------------------
+df12 <- sqldf("SELECT *
+              FROM df11
+              LEFT JOIN DL
+              ON (df11.AA_route = DL.DL_route and df11.AA_Date = DL.DL_Date)")
+
+## ------------------------------------------------------------------------
+df13 <- sqldf("SELECT *
+              FROM df12 
+              LEFT JOIN F9
+              ON (df12.AA_route = F9.F9_route and df12.AA_Date = F9.F9_Date)")
+
+## ------------------------------------------------------------------------
+df14 <- sqldf("SELECT*
+              FROM df13
+              LEFT JOIN WN
+              ON (df13.AA_route = WN.WN_route and df13.AA_Date = WN.WN_Date)")
+
+## ------------------------------------------------------------------------
+df15 <- sqldf("SELECT *
+              FROM df14
+              LEFT JOIN AK
+              ON (df14.AA_route = AK.AS_route and df14.AA_Date = AK.AS_Date)")
+
+## ------------------------------------------------------------------------
+df16 <- sqldf("SELECT *
+              FROM df15
+              LEFT JOIN NK
+              ON (df15.AA_route = NK.NK_route and df15.AA_Date = NK.NK_Date)")
+
+## ------------------------------------------------------------------------
+PaxShare <- df16[, c("AA_route", "AA_Date", "AA_Pax_Day", "UA_Pax_Day", "DL_Pax_Day", "F9_Pax_Day", "WN_Pax_Day", "AS_Pax_Day", "NK_Pax_Day")]
+PaxShare[is.na(PaxShare)] <- 0
+
+PaxShare$total_Pax <- rowSums(PaxShare[, c("AA_Pax_Day", "UA_Pax_Day", "DL_Pax_Day", "F9_Pax_Day", "WN_Pax_Day", "AS_Pax_Day", "NK_Pax_Day")])
+PaxShare$AA_Pax_Share <- PaxShare$AA_Pax_Day / PaxShare$total_Pax
+PaxShare <- PaxShare[, 11]
+head(PaxShare, 10)
+
+## ------------------------------------------------------------------------
+SeatShare <- df16[, c("AA_route", "AA_Date", "AA_Seats_Day", "UA_Seats_Day", "DL_Seats_Day", "F9_Seats_Day", "WN_Seats_Day", "AS_Seats_Day", "NK_Seats_Day")]
+SeatShare[is.na(SeatShare)] <- 0
+
+SeatShare$total_seats <- rowSums(SeatShare[, c("AA_Seats_Day", "UA_Seats_Day", "DL_Seats_Day", "F9_Seats_Day", "WN_Seats_Day", "AS_Seats_Day", "NK_Seats_Day")])
+SeatShare$AA_Seats_Share <- SeatShare$AA_Seats_Day / SeatShare$total_seats
+
+SeatShare <- SeatShare[, -c(1:10)]
+head(SeatShare)
+
+## ------------------------------------------------------------------------
+df17 <- cbind(df16, PaxShare, SeatShare)
+# tail(df17,60)
+
+## ------------------------------------------------------------------------
+df17$year <- as.integer(substring(as.character(df17$AA_Date), 4, 7))
+df17$quarter <- as.integer(substring(as.character(df17$AA_Date), 2, 2))
+head(df17)
+
+## ------------------------------------------------------------------------
+DepTime <- read.csv("./AA_Dep_Time.csv", header = TRUE)
+head(DepTime)
+
+## ------------------------------------------------------------------------
+DepTime <- plyr::rename(DepTime, c("route" = "AA_route"))
+df18 <- plyr::join(df17, DepTime, by = c("AA_route", "year", "quarter"), type = "inner")
+head(df18)
+
+## ------------------------------------------------------------------------
+BlockTime <- read.csv("./Block_Time.csv", header = TRUE)
+BlockTime <- BlockTime[, -1]
+BlockTime <- plyr::rename(BlockTime, c("route" = "AA_route"))
+
+## ------------------------------------------------------------------------
+df19 <- plyr::join(df18, BlockTime, by = c("AA_route", "year", "quarter"), type = "inner")
+df19 <- subset(df19, select = -X)
+nrow(df18)
+nrow(df19)
+head(df19)
+
+## ------------------------------------------------------------------------
+write.csv(df19, "./df19.csv")
+
